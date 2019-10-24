@@ -1,0 +1,78 @@
+version: '3.5'
+
+services:
+  db-nextcloud:
+    image: mariadb:latest
+    container_name: db-nextcloud
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: unless-stopped
+    volumes:
+      - ./data/db-nextcloud:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    env_file: .env
+    networks: 
+      - default
+
+  redis-nextcloud:
+    image: redis:alpine
+    container_name: redis-nextcloud
+    restart: unless-stopped
+    networks:
+      - default
+
+  app-nextcloud:
+    image: nextcloud:fpm-alpine
+    container_name: app-nextcloud
+    restart: unless-stopped
+    volumes:
+      - ./data/nextcloud:/var/www/html
+    environment:
+      - MYSQL_HOST=db-nextcloud
+      - REDIS_HOST=redis-nextcloud
+    env_file: .env
+    depends_on:
+      - db-nextcloud
+      - redis-nextcloud
+    networks:
+      - default
+
+  nginx-nextcloud:
+    image: nginx:latest
+    restart: unless-stopped
+    volumes:
+      - ./data/nextcloud:/var/www/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    environment:
+      - VIRTUAL_HOST=
+      - LETSENCRYPT_HOST=
+      - LETSENCRYPT_EMAIL=
+    depends_on:
+      - app-nextcloud
+    networks:
+      - proxy
+      - default
+
+  cron-nextcloud:
+    image: nextcloud:fpm-alpine
+    container_name: cron-nextcloud
+    restart: unless-stopped
+    volumes:
+      - ./data/nextcloud:/var/www/html
+    entrypoint: /cron.sh
+    depends_on:
+      - db-nextcloud
+      - redis-nextcloud
+    networks: 
+      - default
+
+networks:
+  default:
+    external:
+      name: internal-nextcloud
+  outside:
+    external:
+      name: proxy
